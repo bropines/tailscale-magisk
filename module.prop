@@ -1,7 +1,7 @@
 id=tailscaled
 name=Tailscaled
-version=v1.100.0
-versionCode=11000
+version=v1.98.8
+versionCode=1988
 author=repotitan
 description=Tailscale. The easiest, most secure way to use WireGuard and 2FA.
-updateJson=https://raw.githubusercontent.com/mgksu/tailscaled/refs/heads/main/update.json
+updateJson=https://raw.githubusercontent.com/bropines/tailscale-magisk/refs/heads/main/update.json
