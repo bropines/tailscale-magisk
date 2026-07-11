@@ -1,0 +1,11 @@
+diff --git a/net/netmon/interfaces_linux.go b/net/netmon/interfaces_linux.go
+--- a/net/netmon/interfaces_linux.go
++++ b/net/netmon/interfaces_linux.go
+@@ -1,6 +1,6 @@
+ // Copyright (c) Tailscale Inc & contributors
+ // SPDX-License-Identifier: BSD-3-Clause
+ 
+-//go:build !android
++//go:build linux
+ 
+ package netmon

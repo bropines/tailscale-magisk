@@ -1,0 +1,9 @@
+diff --git a/net/netmon/interfaces_android.go b/net/netmon/interfaces_android.go
+--- a/net/netmon/interfaces_android.go
++++ b/net/netmon/interfaces_android.go
+@@ -1,3 +1,5 @@
++//go:build !ts_include_cli
++
+ // Copyright (c) Tailscale Inc & contributors
+ // SPDX-License-Identifier: BSD-3-Clause
+ 
