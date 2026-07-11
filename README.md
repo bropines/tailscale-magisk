@@ -54,4 +54,5 @@ This module is confirmed to be supported for KernelSU
 
 ## Credits
 
-- [ANASFANANI & AUTHORS](https://github.com/anasfanani/Magisk-Tailscaled). for the repo structure.
+- [Bropines](https://github.com/bropines) — repository maintainer and developer.
+- [ANASFANANI & AUTHORS](https://github.com/anasfanani/Magisk-Tailscaled) — for the original repository structure.
