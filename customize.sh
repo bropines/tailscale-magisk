@@ -20,16 +20,23 @@ if [ -f "$INSTALL_DIR/scripts/tailscaled.service" ]; then
    "$INSTALL_DIR/scripts/tailscaled.service" stop 2>&1 > /dev/null
 fi
 
-if [ "$ARCH" != "arm64" ]; then
-  abort "! Unsupported architecture: $ARCH"
-fi
+ARCH_DIR=""
+case "$ARCH" in
+  arm) ARCH_DIR="arm" ;;
+  arm64) ARCH_DIR="arm64" ;;
+  x86) ARCH_DIR="x86" ;;
+  x64) ARCH_DIR="x86_64" ;;
+  *) abort "! Unsupported architecture: $ARCH" ;;
+esac
+
+ui_print "- Selected architecture: $ARCH ($ARCH_DIR)"
 
 ui_print "- Creating directories"
 
 mkdir -p "$INSTALL_DIR" "$INSTALL_BIN_DIR" "$SERVICE_DIR"
 
 cp -r $MODPATH/tailscale/* "$INSTALL_DIR/"
-mv -f $MODPATH/files/tailscale.combined "$INSTALL_BIN_DIR/tailscale"
+mv -f $MODPATH/files/$ARCH_DIR/tailscale.combined "$INSTALL_BIN_DIR/tailscale"
 cp -f "$INSTALL_BIN_DIR/tailscale" "$INSTALL_BIN_DIR/tailscaled"
 rm -rf $MODPATH/files $MODPATH/tailscale
 

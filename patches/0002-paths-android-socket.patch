@@ -1,0 +1,14 @@
+diff --git a/paths/paths.go b/paths/paths.go
+index 28c3be02a..469db0f60 100644
+--- a/paths/paths.go
++++ b/paths/paths.go
+@@ -21,6 +21,9 @@
+ // DefaultTailscaledSocket returns the path to the tailscaled Unix socket
+ // or the empty string if there's no reasonable default.
+ func DefaultTailscaledSocket() string {
++	if runtime.GOOS == "android" {
++		return "/data/adb/tailscale/tailscaled.sock"
++	}
+ 	if runtime.GOOS == "windows" {
+ 		return `\\.\pipe\ProtectedPrefix\Administrators\Tailscale\tailscaled`
+ 	}

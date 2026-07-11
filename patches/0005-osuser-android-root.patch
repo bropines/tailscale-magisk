@@ -1,0 +1,43 @@
+diff --git a/util/osuser/user.go b/util/osuser/user.go
+index 8b96194d7..70bd89a9c 100644
+--- a/util/osuser/user.go
++++ b/util/osuser/user.go
+@@ -9,6 +9,7 @@
+ 	"context"
+ 	"errors"
+ 	"log"
++	"os"
+ 	"os/exec"
+ 	"os/user"
+ 	"runtime"
+@@ -97,6 +98,30 @@ func lookup(usernameOrUID string, std lookupStd, wantShell bool) (*user.User, st
+ 		}, "/bin/rc", nil
+ 	}
+ 
++	if runtime.GOOS == "android" {
++		var shell string
++		if wantShell {
++			shell = "/system/bin/sh"
++		}
++
++		homeDir := "/"
++		if out, err := os.UserHomeDir(); err == nil {
++			homeDir = strings.TrimSpace(string(out))
++		}
++
++		u, err := std(usernameOrUID)
++		if err != nil {
++			return &user.User{
++				Uid:      "0",
++				Gid:      "0",
++				Username: "root",
++				Name:     "Android",
++				HomeDir:  homeDir,
++			}, shell, nil
++		}
++		return u, shell, nil
++	}
++
+ 	// Start with getent if caller wants to get the user shell.
+ 	if wantShell {
+ 		return userLookupGetent(usernameOrUID, std)

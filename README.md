@@ -15,9 +15,9 @@ This repository contains a Magisk and KernelSU module for running Tailscale on r
 
 After installation, the Tailscale daemon (`tailscaled`) will run automatically on boot.
 
-## Limitation
+## Support
 
-- This module only support `arm64` architecture.
+- This module supports `arm`, `arm64`, `x86`, and `x86_64` (x64) architectures.
 
 ## Tailscale SSH 
 - For ssh home directory is created at `/data/ssh/root` with Bourne shell (sh) as default shell.

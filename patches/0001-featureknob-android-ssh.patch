@@ -1,0 +1,12 @@
+diff --git a/envknob/featureknob/featureknob.go b/envknob/featureknob/featureknob.go
+index e9b871f74..c1f48aa47 100644
+--- a/envknob/featureknob/featureknob.go
++++ b/envknob/featureknob/featureknob.go
+@@ -19,6 +19,7 @@
+ // supported for the current os/distro.
+ func CanRunTailscaleSSH() error {
+ 	switch runtime.GOOS {
++	case "android":
+ 	case "linux":
+ 		if distro.Get() == distro.Synology && !envknob.UseWIPCode() {
+ 			return errors.New("The Tailscale SSH server does not run on Synology.")

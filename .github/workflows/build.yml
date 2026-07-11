@@ -8,106 +8,178 @@ on:
         type: boolean
         default: false
   schedule:
-    - cron: '0 0 * * 0'
+    - cron: '0 0 */3 * *'
   
 permissions:
   contents: write
   actions: write
   
 jobs:
-  build:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check_step.outputs.should_build }}
+      tailscale_version: ${{ steps.check_step.outputs.tailscale_version }}
+    steps:
+      - name: Get latest stable release from tailscale
+        id: get_stable_release
+        uses: octokit/request-action@v2.x
+        with:
+          route: GET /repos/tailscale/tailscale/releases/latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Get latest tag
+        id: parse_tag
+        run: |
+          latestTag="${{ fromJSON(steps.get_stable_release.outputs.data).tag_name }}"
+          echo "Latest tag: $latestTag"
+          echo "version=$latestTag" >> $GITHUB_OUTPUT
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Fetch tags
+        run: git fetch --prune --unshallow --tags
+
+      - name: Check Latest Version
+        id: check_step
+        run: |
+          latest_version=$(git describe --tags --abbrev=0 --always 2>/dev/null || echo "v0.0.0")
+          echo "Current latest version in repo: $latest_version"
+          echo "Target version: ${{ steps.parse_tag.outputs.version }}"
+          if [ "$latest_version" == "${{ steps.parse_tag.outputs.version }}" ] && [ "${{ inputs.force }}" != "true" ]; then
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "No new version to build."
+          else
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "tailscale_version=${{ steps.parse_tag.outputs.version }}" >> $GITHUB_OUTPUT
+          fi
+
+  build_binaries:
+    needs: check
+    if: needs.check.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: arm64
+            goarch: arm64
+            cc: aarch64-linux-android21-clang
+            cxx: aarch64-linux-android21-clang++
+          - arch: arm
+            goarch: arm
+            cc: armv7a-linux-androideabi21-clang
+            cxx: armv7a-linux-androideabi21-clang++
+            goarm: "7"
+          - arch: x86
+            goarch: 386
+            cc: i686-linux-android21-clang
+            cxx: i686-linux-android21-clang++
+          - arch: x86_64
+            goarch: amd64
+            cc: x86_64-linux-android21-clang
+            cxx: x86_64-linux-android21-clang++
+    steps:
+      - name: Checkout repo (for patches)
+        uses: actions/checkout@v4
+
+      - name: Checkout tailscale
+        uses: actions/checkout@v4
+        with:
+          repository: tailscale/tailscale
+          path: tailscale-build
+          ref: ${{ needs.check.outputs.tailscale_version }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          cache: false
+
+      - name: Apply patches
+        run: |
+          cd tailscale-build
+          for patch_file in ../patches/*.patch; do
+            echo "Applying patch: $patch_file"
+            patch -p1 < "$patch_file"
+          done
+          sed -i 's|/etc/resolv.conf|/data/adb/tailscale/etc/resolv.conf|g' net/dns/resolvconfpath_default.go
+          sed -i 's|/etc/resolv.pre-tailscale-backup.conf|/data/adb/tailscale/etc/resolv.pre-tailscale-backup.conf|g' net/dns/resolvconfpath_default.go
+
+      - name: Build binary
+        run: |
+          cd tailscale-build
+          eval `CGO_ENABLED=0 GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) go run ./cmd/mkversion`
+          ldflags="-X tailscale.com/version.longStamp=${VERSION_LONG} -X tailscale.com/version.shortStamp=${VERSION_SHORT}"
+          
+          NDK_BIN_PATH="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          
+          export GOOS=android
+          export GOARCH=${{ matrix.goarch }}
+          export CGO_ENABLED=1
+          export CC=${NDK_BIN_PATH}/${{ matrix.cc }}
+          export CXX=${NDK_BIN_PATH}/${{ matrix.cxx }}
+          if [ -n "${{ matrix.goarm }}" ]; then
+            export GOARM=${{ matrix.goarm }}
+          fi
+          
+          go build -tags ts_include_cli,ts_omit_systray -ldflags "$ldflags -s -w" -o ../tailscale.combined -trimpath ./cmd/tailscaled
+
+      - name: Install UPX
+        uses: crazy-max/ghaction-upx@v3
+        with:
+          install-only: true
+
+      - name: Compress binary
+        run: |
+          upx --lzma --best tailscale.combined
+
+      - name: Upload Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tailscale-binary-${{ matrix.arch }}
+          path: tailscale.combined
+          retention-days: 1
+
+  release:
+    needs: [check, build_binaries]
+    if: needs.check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     steps:
-    - name: Get latest stable release from tailscale
-      id: get_stable_release
-      uses: octokit/request-action@v2.x
-      with:
-        route: GET /repos/tailscale/tailscale/releases/latest
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: Get latest tag
-      run: |
-        latestTag="${{ fromJSON(steps.get_stable_release.outputs.data).tag_name }}"
-        echo "Latest tag: $latestTag"
-        echo "TAILSCALE_VERSION=${latestTag}" >> $GITHUB_ENV
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: tailscale-binary-arm64
+          path: files/arm64
 
-    - name: Fetch tags
-      run: git fetch --prune --unshallow --tags
+      - name: Download arm binary
+        uses: actions/download-artifact@v4
+        with:
+          name: tailscale-binary-arm
+          path: files/arm
 
-    - name: Check Latest Version
-      if: ${{ inputs.force == false }}
-      run: |
-        LATEST_VERSION=$(git describe --tags --abbrev=0 --always)
-        if [ "$LATEST_VERSION" == "${{ env.TAILSCALE_VERSION }}" ]; then
-          gh run cancel ${{ github.run_id }}
-        else
-          echo "New version found: ${LATEST_VERSION}"
-        fi
-      env:
-       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download x86 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: tailscale-binary-x86
+          path: files/x86
 
-    - name: Checkout tailscale
-      uses: actions/checkout@v4
-      with:
-        repository: tailscale/tailscale
-        path: tailscale-build
-        ref: ${{ env.TAILSCALE_VERSION }}  
+      - name: Download x86_64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: tailscale-binary-x86_64
+          path: files/x86_64
 
-    - name: Setup Go 1.24.x
-      uses: actions/setup-go@v5
-      with:
-        go-version: 'stable'
-        cache: false
-    
-    - name: Build Tailscale for Android
-      run: |
-
-        cd tailscale-build
-
-        patch -p1 < ../android.ssh.patch
-
-        sed -i 's|/etc/resolv.conf|/data/adb/tailscale/etc/resolv.conf|g' net/dns/resolvconfpath_default.go
-        sed -i 's|/etc/resolv.pre-tailscale-backup.conf|/data/adb/tailscale/etc/resolv.pre-tailscale-backup.conf|g' net/dns/resolvconfpath_default.go
-
-        eval `CGO_ENABLED=0 GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) go run ./cmd/mkversion`
-        ldflags="-X tailscale.com/version.longStamp=${VERSION_LONG} -X tailscale.com/version.shortStamp=${VERSION_SHORT}"
-
-        echo "BUILD_TAILSCALE_VERSION=${VERSION_SHORT}" >> $GITHUB_ENV
-
-        NDK_BIN_PATH="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-
-        echo "Building for arm64"
-        CC=${NDK_BIN_PATH}/aarch64-linux-android21-clang CXX=${NDK_BIN_PATH}/aarch64-linux-android21-clang++ CGO_ENABLED=1 GOOS=android GOARCH=arm64 go build -tags ts_include_cli -ldflags "$ldflags -s -w" -o ./tailscale.combined -trimpath ./cmd/tailscaled
-
-    - name: Install UPX
-      uses: crazy-max/ghaction-upx@v3
-      with:
-        install-only: true
-
-    - name: Compress binaries
-      run: |
-        upx --version
-
-        echo "Compressing tailscale binaries for arm64"
-        du -hs ./tailscale-build/tailscale.combined
-        upx --lzma --best ./tailscale-build/tailscale.combined
-        du -hs ./tailscale-build/tailscale.combined
-        mkdir -p files
-        cp ./tailscale-build/tailscale.combined files/tailscale.combined
-        rm -rf tailscale-build
-    
-    - name: Build Magisk Module
-      run: |
-          version="${{ env.TAILSCALE_VERSION }}"
+      - name: Build Magisk Module Metadata
+        run: |
+          version="${{ needs.check.outputs.tailscale_version }}"
           version_code=$(echo "${version}" | sed 's/[^0-9]//g')
           echo "version=${version}" >> $GITHUB_ENV
           echo "versionCode=${version_code}" >> $GITHUB_ENV
-          echo version=${version}
-          echo versionCode=${version_code}
           
           echo "id=tailscaled" > module.prop
           echo "name=Tailscaled" >> module.prop
@@ -116,20 +188,19 @@ jobs:
           echo "author=repotitan" >> module.prop
           echo "description=Tailscale. The easiest, most secure way to use WireGuard and 2FA." >> module.prop
           echo "updateJson=https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/main/update.json" >> module.prop
-    
 
-    - name: Create Module Zip
-      run: |
-        mkdir -p dist
-        zip -9 -r ./dist/Magisk-Tailscaled-${{ env.version }}.zip . -x "*git*" "dist/*" "*.zip" "*.json" "*.md" "*.patch"
+      - name: Create Module Zip
+        run: |
+          mkdir -p dist
+          zip -9 -r ./dist/Magisk-Tailscaled-${{ env.version }}.zip . -x "*git*" "dist/*" "*.zip" "*.json" "*.md" "*.patch" "patches/*" "scratch/*"
 
-    - name: Set up Git
-      run: |
+      - name: Set up Git
+        run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
 
-    - name: Push updated files to Main branch
-      run: |
+      - name: Push updated files to Main branch
+        run: |
           echo '{
             "version": "${{ env.version }}",
             "versionCode": "${{ env.versionCode }}",
@@ -146,17 +217,15 @@ jobs:
             git push origin ${{ env.version }} -f
           fi
 
-    - name: Create Release
-      id: create_release
-      uses: softprops/action-gh-release@v2
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        append_body: true
-        generate_release_notes: true
-        make_latest: true
-        files: |
-          ./dist/Magisk-Tailscaled-${{ env.version }}.zip
-        name: ${{ env.version }}
-        tag_name: ${{ env.version }}
-
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          append_body: true
+          generate_release_notes: true
+          make_latest: true
+          files: |
+            ./dist/Magisk-Tailscaled-${{ env.version }}.zip
+          name: ${{ env.version }}
+          tag_name: ${{ env.version }}

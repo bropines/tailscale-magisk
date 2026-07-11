@@ -1,0 +1,17 @@
+diff --git a/ssh/tailssh/tailssh.go b/ssh/tailssh/tailssh.go
+index e42f09bdf..b71d0283f 100644
+--- a/ssh/tailssh/tailssh.go
++++ b/ssh/tailssh/tailssh.go
+@@ -338,11 +338,7 @@ func (c *conn) clientAuth(cm gossh.ConnMetadata) (perms *gossh.Permissions, retE
+ 		if err != nil {
+ 			return nil, c.errBanner(fmt.Sprintf("failed to look up local user %q ", localUser), err)
+ 		}
+-		gids, err := lu.GroupIds()
+-		if err != nil {
+-			return nil, c.errBanner("failed to look up local user's group IDs", err)
+-		}
+-		c.userGroupIDs = gids
++		c.userGroupIDs = []string{"0"}
+ 		c.localUser = lu
+ 		c.acceptEnv = acceptEnv
+ 	}
