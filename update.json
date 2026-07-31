@@ -1,6 +1,6 @@
 {
-  "version": "v1.98.9",
-  "versionCode": "1989",
-  "zipUrl": "https://github.com/bropines/tailscale-magisk/releases/download/v1.98.9/Magisk-Tailscaled-v1.98.9.zip",
+  "version": "v1.98.10",
+  "versionCode": "19810",
+  "zipUrl": "https://github.com/bropines/tailscale-magisk/releases/download/v1.98.10/Magisk-Tailscaled-v1.98.10.zip",
   "changelog": "https://raw.githubusercontent.com/bropines/tailscale-magisk/main/CHANGELOG.md"
 }
